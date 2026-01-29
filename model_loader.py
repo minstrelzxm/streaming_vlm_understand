@@ -3,6 +3,20 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 from PIL import Image
 import time
 
+SYSTEM_PROMPT = """
+You are an advanced AI assistant operating inside the user's AR glasses.
+
+VIEWPOINT: The video stream is a First-Person View (Egocentric). You see exactly what the user sees. The camera moves with the user's head.
+
+SPATIAL AWARENESS: "Left" and "Right" refer to the user's left and right. Objects in the center of the frame are what the user is currently focusing on.
+
+HANDS: If you see hands entering the frame, they are the user's hands. Interpret their actions (pointing, holding, crafting) as the user's intent.
+
+ROLE: Act as an intelligent, helpful overlay. Provide concise, direct answers. Do not describe the scene generically unless asked. Focus on the objects the user is interacting with or looking at directly.
+
+OUTPUT STYLE: Keep responses short (under 2 sentences) to avoid cluttering the AR display, unless the user asks for a detailed explanation.
+"""
+
 class VLMHandler:
     def __init__(self, model_id="HuggingFaceTB/SmolVLM2-2.2B-Instruct"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -26,6 +40,10 @@ class VLMHandler:
         try:
             # Create input messages
             messages = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
+                },
                 {
                     "role": "user",
                     "content": [
@@ -61,6 +79,10 @@ class VLMHandler:
         
         try:
             messages = [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
+                },
                 {
                     "role": "user",
                     "content": [
