@@ -37,7 +37,13 @@ class VLMHandler:
             
             # Prepare inputs
             text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
-            inputs = self.processor(text=text, images=image, return_tensors="pt").to(self.device)
+            inputs = self.processor(text=text, images=image, return_tensors="pt")
+            inputs = inputs.to(self.device)
+            
+            # Cast floating point inputs to match model dtype (e.g. float16 for CUDA)
+            for k, v in inputs.items():
+                if torch.is_floating_point(v):
+                    inputs[k] = v.to(dtype=self.model.dtype)
 
             # Generate
             generated_ids = self.model.generate(**inputs, max_new_tokens=100)
@@ -70,7 +76,13 @@ class VLMHandler:
                 tokenize=True,
                 return_dict=True,
                 return_tensors="pt",
-            ).to(self.device, dtype=torch.float16) # Casting to float16 to match model
+            )
+            inputs = inputs.to(self.device)
+            
+            # Cast floating point inputs
+            for k, v in inputs.items():
+                if torch.is_floating_point(v):
+                    inputs[k] = v.to(dtype=self.model.dtype)
 
             generated_ids = self.model.generate(**inputs, do_sample=False, max_new_tokens=64)
             generated_texts = self.processor.batch_decode(
