@@ -1,0 +1,19 @@
+# Virtual Environment
+env/
+venv/
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# SSL Certificates
+*.pem
+
+# Temporary Video Files
+temp_video_input.mp4
+temp_stream.mp4
+*.mp4
+
+# OS
+.DS_Store

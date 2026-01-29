@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time VLM</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #overlay {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 2;
+            font-size: 1.2rem;
+            min-height: 50px;
+        }
+
+        #status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 3;
+            background: rgba(255, 0, 0, 0.8);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            z-index: 4;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            background: #333;
+            color: #fff;
+        }
+
+        button.active {
+            background: #007aff;
+        }
+    </style>
+</head>
+
+<body>
+    <video id="video" autoplay playsinline muted></video>
+    <div id="status">Disconnected</div>
+    <div id="overlay">Waiting for understanding...</div>
+    <div id="controls">
+        <button id="imgModeBtn" class="active" onclick="setMode('image')">Image Mode</button>
+        <button id="vidModeBtn" onclick="setMode('video')">Video Mode</button>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('overlay');
+        const statusDiv = document.getElementById('status');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const imgModeBtn = document.getElementById('imgModeBtn');
+        const vidModeBtn = document.getElementById('vidModeBtn');
+
+        let ws;
+        let isProcessing = false;
+        let currentMode = 'image'; // 'image' or 'video'
+        let intervalId;
+
+        function setMode(mode) {
+            currentMode = mode;
+            if (mode === 'image') {
+                imgModeBtn.classList.add('active');
+                vidModeBtn.classList.remove('active');
+            } else {
+                imgModeBtn.classList.remove('active');
+                vidModeBtn.classList.add('active');
+            }
+            // Reset interval loop
+            clearInterval(intervalId);
+            startAnalysisLoop();
+        }
+
+        // Connect to Camera
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Camera access denied:", err);
+                overlay.innerText = "Camera access denied. Please allow camera and refresh.";
+            }
+        }
+
+        // Connect WebSocket
+        function connectWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDiv.innerText = "Connected";
+                statusDiv.style.background = "rgba(0,255,0,0.8)";
+                startAnalysisLoop();
+            };
+
+            ws.onmessage = (event) => {
+                overlay.innerText = event.data;
+                isProcessing = false; // Ready for next frame
+            };
+
+            ws.onclose = () => {
+                statusDiv.innerText = "Disconnected";
+                statusDiv.style.background = "rgba(255,0,0,0.8)";
+                setTimeout(connectWS, 3000); // Reconnect
+            };
+        }
+
+        function captureFrame() {
+            if (!video.videoWidth) return null;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            return canvas.toDataURL('image/jpeg', 0.6); // Compress a bit
+        }
+
+        async function sendFrame() {
+            if (ws.readyState !== WebSocket.OPEN) return;
+
+            const dataUrl = captureFrame();
+            if (!dataUrl) return;
+
+            // Send JSON with mode and data
+            const payload = {
+                mode: currentMode,
+                data: dataUrl
+            };
+            ws.send(JSON.stringify(payload));
+        }
+
+        function startAnalysisLoop() {
+            if (intervalId) clearInterval(intervalId);
+
+            let intervalTime = 5000; // Default Image Mode: 5s
+            if (currentMode === 'video') {
+                intervalTime = 200; // Video Mode: 5 FPS (send frame every 200ms)
+            }
+
+            intervalId = setInterval(() => {
+                if (isProcessing && currentMode === 'image') return; // Skip if busy in image mode
+
+                sendFrame();
+
+                if (currentMode === 'image') {
+                    statusDiv.innerText = "Analyzing Image...";
+                    isProcessing = true;
+                } else {
+                    statusDiv.innerText = "Streaming Video...";
+                }
+
+            }, intervalTime);
+        }
+
+        startCamera();
+        connectWS();
+    </script>
+</body>
+
+</html>
